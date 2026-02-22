@@ -542,7 +542,7 @@ function dDims() {
   const wrap  = document.querySelector('#app .carousel-wrapper');
   const wrapW = wrap.offsetWidth;
   const cardW = 413; // px внутри 1920-координат
-  const actH  = cardW * 1.5;      // 1:1.6 (было 1:2)
+  const actH  = cardW * 1.6;      // 1:1.6 (было 1:2)
   const sideH = actH * 0.68;
   const rX    = Math.min(wrapW * 0.36, cardW * 3.4);
   const rZ    = cardW * 0.62;
@@ -688,27 +688,34 @@ let mCurrent = 0, mCart = 0;
 const CARD_W_MOB = Math.min(window.innerWidth * 0.72, 280);
 const SIDE_PEEK  = 0.14; // боковые карточки видны на 14%
 
+const M_CARD_RATIO = 0.90; // единый множитель ширины карточки
+const M_CARD_MAX   = 525;
+const M_GAP        = 16;
+
+function mCardW() {
+  return Math.min(window.innerWidth * M_CARD_RATIO, M_CARD_MAX);
+}
+
 function mBuild() {
   const strip  = document.getElementById('m-strip');
   const outer  = document.getElementById('m-outer');
   strip.innerHTML = '';
 
-  const vw      = window.innerWidth;
-  const cardW   = Math.min(vw * 0.72, 280);
-  const cardH   = cardW * 1.6;
-  const gap     = 16;
-  const padLeft = (vw - cardW) / 2; // центрируем активную
+  const vw    = window.innerWidth;
+  const cardW = mCardW();
+  const cardH = cardW * 1.6;
 
-  strip.style.paddingLeft  = padLeft + 'px';
-  strip.style.paddingRight = padLeft + 'px';
-  strip.style.gap          = gap + 'px';
+  // Убираем padding — центрирование делаем через translateX
+  strip.style.paddingLeft  = '0px';
+  strip.style.paddingRight = '0px';
+  strip.style.gap          = M_GAP + 'px';
   outer.style.height       = (cardH + 40) + 'px';
 
   products.forEach((p, i) => {
     const card = document.createElement('div');
-    card.className = 'm-card' + (i === mCurrent ? ' active' : '');
-    card.style.width  = cardW + 'px';
-    card.style.height = cardH + 'px';
+    card.className     = 'm-card' + (i === mCurrent ? ' active' : '');
+    card.style.width   = cardW + 'px';
+    card.style.height  = cardH + 'px';
     card.style.flexShrink = '0';
 
     const sizeBtns = p.sizes.map((s, si) =>
@@ -729,12 +736,16 @@ function mBuild() {
 }
 
 function mUpdateStrip() {
-  const strip = document.getElementById('m-strip');
   const vw    = window.innerWidth;
-  const cardW = Math.min(vw * 0.90, 525);
-  const gap   = 16;
-  const offset = mCurrent * (cardW + gap);
-  strip.style.transform = `translateX(-${offset}px)`;
+  const cardW = mCardW();
+  const strip = document.getElementById('m-strip');
+
+  // Каждая карточка i начинается в позиции i*(cardW+gap)
+  // Хотим чтобы центр активной карточки совпал с центром экрана
+  // центр карточки i = i*(cardW+gap) + cardW/2
+  // смещение стрипа = центр активной - vw/2
+  const offset = mCurrent * (cardW + M_GAP) + cardW / 2 - vw / 2;
+  strip.style.transform = `translateX(${-offset}px)`;
 
   [...document.querySelectorAll('#m-strip .m-card')].forEach((card, i) => {
     const dist = Math.abs(i - mCurrent);
