@@ -22,7 +22,7 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-body { background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; }
+body { background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; max-width: 100%; overflow-x: hidden; }
 
 body::before {
   content: '';
@@ -233,7 +233,7 @@ body::before {
    MOBILE  (< 768px)
    Обычный flow, нет transform scale
    ════════════════════════════════ */
-#mobile { display: none; min-height: 100vh; flex-direction: column; }
+#mobile { display: none; min-height: 100vh; flex-direction: column; overflow-x: hidden; }
 
 /* MOBILE HEADER */
 #mobile header {
@@ -542,7 +542,7 @@ function dDims() {
   const wrap  = document.querySelector('#app .carousel-wrapper');
   const wrapW = wrap.offsetWidth;
   const cardW = 413; // px внутри 1920-координат
-  const actH  = cardW * 1.5;      // 1:1.6 (было 1:2)
+  const actH  = cardW * 1.6;      // 1:1.6 (было 1:2)
   const sideH = actH * 0.68;
   const rX    = Math.min(wrapW * 0.36, cardW * 3.4);
   const rZ    = cardW * 0.62;
@@ -688,7 +688,7 @@ let mCurrent = 0, mCart = 0;
 const CARD_W_MOB = Math.min(window.innerWidth * 0.72, 280);
 const SIDE_PEEK  = 0.14; // боковые карточки видны на 14%
 
-const M_CARD_RATIO = 0.80; // единый множитель ширины карточки
+const M_CARD_RATIO = 0.90; // единый множитель ширины карточки
 const M_CARD_MAX   = 525;
 const M_GAP        = 16;
 
@@ -703,7 +703,7 @@ function mBuild() {
 
   const vw    = window.innerWidth;
   const cardW = mCardW();
-  const cardH = cardW * 1.5;
+  const cardH = cardW * 1.6;
 
   // Убираем padding — центрирование делаем через translateX
   strip.style.paddingLeft  = '0px';
