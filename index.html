@@ -138,7 +138,7 @@ body::before {
 /* CARD desktop */
 #app .card {
   position: absolute; top: 50%; left: 50%;
-  width: 275px;
+  width: 413px;
   background: var(--card-bg); border: 1px solid var(--border);
   border-radius: 20px; padding: 24px 20px;
   cursor: none;
@@ -161,7 +161,7 @@ body::before {
   font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 10px;
   letter-spacing: .2em; color: var(--accent); text-transform: uppercase; text-align: center;
 }
-#app .tshirt-preview { width: 90%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+#app .tshirt-preview { width: 95%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
 #app .tshirt-svg { width: 100%; height: 100%; transition: filter .3s; }
 #app .card.active .tshirt-svg { filter: drop-shadow(0 0 12px var(--accent2)); }
 #app .size-picker { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
@@ -314,7 +314,7 @@ body::before {
   font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 11px;
   letter-spacing: .2em; color: var(--accent); text-transform: uppercase; text-align: center;
 }
-#mobile .tshirt-preview { width: 90%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+#mobile .tshirt-preview { width: 95%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
 #mobile .tshirt-svg { width: 100%; height: 100%; }
 #mobile .m-card.active .tshirt-svg { filter: drop-shadow(0 0 10px var(--accent2)); }
 #mobile .size-picker { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
@@ -541,7 +541,7 @@ function dApplyScale() {
 function dDims() {
   const wrap  = document.querySelector('#app .carousel-wrapper');
   const wrapW = wrap.offsetWidth;
-  const cardW = 275; // px внутри 1920-координат
+  const cardW = 413; // px внутри 1920-координат
   const actH  = cardW * 2;
   const sideH = actH * 0.68;
   const rX    = Math.min(wrapW * 0.36, cardW * 3.4);
@@ -731,7 +731,7 @@ function mBuild() {
 function mUpdateStrip() {
   const strip = document.getElementById('m-strip');
   const vw    = window.innerWidth;
-  const cardW = Math.min(vw * 0.90, 350);
+  const cardW = Math.min(vw * 0.90, 525);
   const gap   = 16;
   const offset = mCurrent * (cardW + gap);
   strip.style.transform = `translateX(-${offset}px)`;
