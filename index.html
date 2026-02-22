@@ -542,7 +542,7 @@ function dDims() {
   const wrap  = document.querySelector('#app .carousel-wrapper');
   const wrapW = wrap.offsetWidth;
   const cardW = 413; // px внутри 1920-координат
-  const actH  = cardW * 2;
+  const actH  = cardW * 1.6;      // 1:1.6 (было 1:2)
   const sideH = actH * 0.68;
   const rX    = Math.min(wrapW * 0.36, cardW * 3.4);
   const rZ    = cardW * 0.62;
@@ -695,7 +695,7 @@ function mBuild() {
 
   const vw      = window.innerWidth;
   const cardW   = Math.min(vw * 0.72, 280);
-  const cardH   = cardW * 2;
+  const cardH   = cardW * 1.6;
   const gap     = 16;
   const padLeft = (vw - cardW) / 2; // центрируем активную
 
