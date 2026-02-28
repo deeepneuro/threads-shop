@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<!-- Запрещает браузеру масштабировать страницу самостоятельно на мобильных -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THREADS — Магазин</title>
+<style>
+/* Подключаем три шрифта с Google Fonts:
+   Bebas Neue — для логотипа и цен (широкий декоративный)
+   Space Mono — основной моноширинный текст
+   Unbounded — для заголовков и названий товаров */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Unbounded:wght@300;400;700&display=swap');
+
+/* ── CSS-переменные (цветовая палитра) ──
+   Все цвета определены здесь один раз,
+   используются через var(--имя) по всему коду */
+:root {
+  --bg: #1e1b2e;           /* тёмно-фиолетовый фон страницы */
+  --card-bg: #2a2540;      /* фон обычной карточки */
+  --card-active: #312d4d;  /* фон активной (центральной) карточки */
+  --accent: #e8e0ff;       /* светло-лавандовый — основной акцент */
+  --accent2: #a78bfa;      /* фиолетовый — кнопки, рамки, свечение */
+  --text: #f0ebff;         /* почти белый — основной цвет текста */
+  --muted: #7c6fa0;        /* приглушённый фиолетовый — второстепенный текст */
+  --price: #c4b5fd;        /* цвет цены */
+  --border: rgba(167,139,250,0.25);  /* полупрозрачная фиолетовая рамка */
+  --glow: rgba(167,139,250,0.15);    /* полупрозрачное фиолетовое свечение */
+}
+
+/* Сбрасываем отступы у всех элементов,
+   box-sizing: border-box — размеры включают padding и border */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Основные стили body:
+   overflow-x: hidden — запрещает горизонтальную прокрутку на мобильном */
+body { background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; max-width: 100%; overflow-x: hidden; }
+
+/* Псевдоэлемент ::before создаёт шумовую текстуру поверх всей страницы.
+   SVG с feTurbulence генерирует зернистый шум (эффект плёнки).
+   position: fixed — висит поверх всего, не скроллится.
+   pointer-events: none — не мешает кликам.
+   z-index: 1 — выше фона, ниже контента. */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 1; opacity: .4;
+}
+
+/* ════════════════════════════════
+   ДЕСКТОП (≥ 768px)
+   Всё внутри #app 1920×1080,
+   масштабируется через JS scale
+   ════════════════════════════════ */
+
+/* Маленькая точка — кастомный курсор мыши.
+   mix-blend-mode: screen — светлеет при наложении на тёмный фон.
+   display: none — скрыт по умолчанию, JS показывает на десктопе. */
+.cursor {
+  width: 12px; height: 12px;
+  background: var(--accent2); border-radius: 50%;
+  position: fixed; pointer-events: none; z-index: 9999; mix-blend-mode: screen;
+  display: none;
+}
+
+/* Кольцо вокруг курсора — следует за точкой с инерцией (эффект задержки).
+   Реализуется через JS-анимацию requestAnimationFrame. */
+.cursor-ring {
+  width: 36px; height: 36px;
+  border: 1px solid var(--accent2); border-radius: 50%;
+  position: fixed; pointer-events: none; z-index: 9998; opacity: .45;
+  display: none;
+}
+
+/* Эталонный контейнер десктопного дизайна.
+   Зафиксирован в 1920×1080px — как "холст".
+   JS масштабирует его через transform: scale() под реальный экран.
+   display: none — скрыт по умолчанию, JS показывает на десктопе. */
+#app {
+  width: 1920px; height: 1080px;
+  position: relative; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: 'Space Mono', monospace;
+  cursor: none;
+  display: none;
+}
+
+/* ── Шапка (десктоп) ──
+   flex с justify-content: space-between — логотип слева, кнопки справа */
+#app header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 28px 60px;
+  border-bottom: 1px solid var(--border); /* тонкая разделительная линия снизу */
+  position: relative; z-index: 10;
+}
+
+/* Логотип THREADS — крупный декоративный шрифт с фиолетовым свечением */
+#app .logo {
+  font-family: 'Bebas Neue', sans-serif; font-size: 52px;
+  letter-spacing: .15em; color: var(--accent);
+  text-shadow: 0 0 40px var(--accent2);
+}
+
+/* Правая часть шапки: корзина + кнопки авторизации в ряд */
+#app .header-right { display: flex; align-items: center; gap: 16px; }
+
+/* Кнопка корзины — овальная рамка, при наведении появляется свечение.
+   position: relative + overflow: hidden — нужны для псевдоэлемента ::before */
+#app .cart-btn {
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: 1px solid var(--border); color: var(--text);
+  padding: 12px 26px; border-radius: 50px;
+  font-family: 'Space Mono', monospace; font-size: 14px; letter-spacing: .1em;
+  cursor: none; transition: all .3s; position: relative; overflow: hidden;
+}
+
+/* Слой свечения под кнопкой корзины — плавно появляется при наведении */
+#app .cart-btn::before {
+  content: ''; position: absolute; inset: 0;
+  background: var(--glow); opacity: 0; transition: opacity .3s;
+}
+#app .cart-btn:hover::before { opacity: 1; }
+#app .cart-btn:hover { border-color: var(--accent2); }
+
+#app .cart-icon { width: 22px; height: 18px; }
+#app .cart-icon svg { width: 100%; height: 100%; }
+
+/* Счётчик товаров — фиолетовый круг с цифрой.
+   JS делает кратковременное увеличение scale при добавлении товара */
+#app .cart-count {
+  background: var(--accent2); color: var(--bg);
+  font-size: 11px; font-weight: 700;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .2s;
+}
+
+/* Кнопки "Войти" / "Регистрация" */
+#app .auth-btns { display: flex; gap: 8px; }
+#app .auth-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  padding: 10px 22px; border-radius: 4px;
+  font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: .08em;
+  cursor: none; transition: all .2s;
+}
+#app .auth-btn:hover { color: var(--text); border-color: var(--accent2); }
+/* Кнопка "Регистрация" — залитая фиолетовым */
+#app .auth-btn.filled { background: var(--accent2); border-color: var(--accent2); color: var(--bg); }
+
+/* ── Подзаголовок "Коллекция / Весна 2025" (десктоп) ── */
+#app .hero-label {
+  text-align: center; padding: 40px 0 18px; position: relative; z-index: 2;
+}
+#app .hero-label h1 {
+  font-family: 'Unbounded', sans-serif; font-weight: 300; font-size: 13px;
+  letter-spacing: .42em; color: var(--muted); text-transform: uppercase;
+}
+
+/* ── Секция карусели (десктоп) ── */
+#app .carousel-section {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center;
+}
+
+/* Обёртка карусели:
+   perspective: 2000px — задаёт глубину 3D-пространства для дочерних элементов */
+#app .carousel-wrapper {
+  width: 100%; height: 620px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; perspective: 2000px;
+}
+
+/* Стрелки прокрутки — абсолютно позиционированы по бокам */
+#app .arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  z-index: 20; background: none; border: none; cursor: none;
+  opacity: .55; transition: opacity .2s, transform .2s; padding: 8px;
+}
+#app .arrow:hover { opacity: 1; }
+#app .arrow.left  { left:  40px; }
+#app .arrow.right { right: 40px; }
+/* При наведении стрелки чуть смещаются в сторону — намёк на направление */
+#app .arrow:hover.left  { transform: translateY(-50%) translateX(-5px); }
+#app .arrow:hover.right { transform: translateY(-50%) translateX(5px); }
+#app .arrow svg { width: 44px; height: 44px; }
+
+/* Трек карусели — контейнер для карточек.
+   transform-style: preserve-3d — дочерние элементы живут в 3D-пространстве */
+#app .carousel-track { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+
+/* ── Карточка товара (десктоп) ──
+   position: absolute + top/left 50% — JS центрирует через translate(-50%,-50%)
+   и позиционирует каждую карточку через translateX/Z */
+#app .card {
+  position: absolute; top: 50%; left: 50%;
+  width: 413px;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 20px; padding: 24px 20px;
+  cursor: none;
+  transition: transform .5s cubic-bezier(.4,0,.2,1), opacity .5s, height .5s, box-shadow .3s;
+  will-change: transform; /* подсказка браузеру — оптимизировать трансформации GPU */
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  overflow: hidden; user-select: none; /* запрет выделения текста при drag */
+}
+
+/* Горизонтальная светящаяся линия сверху карточки (скрыта по умолчанию) */
+#app .card::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+  opacity: 0; transition: opacity .3s;
+}
+
+/* Активная (центральная) карточка — светлее фон, фиолетовая рамка, свечение */
+#app .card.active {
+  background: var(--card-active); border-color: var(--accent2);
+  box-shadow: 0 0 60px rgba(167,139,250,.22), 0 24px 64px rgba(0,0,0,.55);
+}
+#app .card.active::after { opacity: 1; } /* показать верхнюю линию на активной */
+
+/* Название товара в карточке */
+#app .card-name {
+  font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 10px;
+  letter-spacing: .2em; color: var(--accent); text-transform: uppercase; text-align: center;
+}
+
+/* Контейнер изображения — квадратный (aspect-ratio: 1), 95% ширины карточки */
+#app .tshirt-preview { width: 95%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+#app .tshirt-svg { width: 100%; height: 100%; transition: filter .3s; }
+/* На активной карточке — фиолетовое свечение вокруг изображения */
+#app .card.active .tshirt-svg { filter: drop-shadow(0 0 12px var(--accent2)); }
+
+/* Выбор размера — ряд кнопок XS/S/M/L/XL */
+#app .size-picker { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+#app .size-btn {
+  width: 30px; height: 30px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: none; color: var(--muted);
+  font-family: 'Space Mono', monospace; font-size: 8px;
+  cursor: none; transition: all .2s;
+  display: flex; align-items: center; justify-content: center;
+}
+#app .size-btn:hover, #app .size-btn.active {
+  border-color: var(--accent2); color: var(--accent); background: var(--glow);
+}
+
+/* Цена — крупный декоративный шрифт */
+#app .card-price {
+  font-family: 'Bebas Neue', sans-serif; font-size: 26px;
+  letter-spacing: .05em; color: var(--price);
+}
+
+/* ── Блок с информацией об активном товаре (под каруселью) ──
+   Появляется с анимацией — JS добавляет класс .visible */
+#app .product-info {
+  text-align: center; margin-top: 14px;
+  opacity: 0; transform: translateY(10px); transition: all .4s;
+}
+#app .product-info.visible { opacity: 1; transform: translateY(0); }
+#app .product-info .pname {
+  font-family: 'Unbounded', sans-serif; font-weight: 300; font-size: 18px;
+  letter-spacing: .16em; color: var(--accent); margin-bottom: 4px;
+}
+#app .product-info .pdesc { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+
+/* ── Точки-индикаторы слайдов ──
+   Активная точка вытягивается в таблетку (width: 22px, border-radius: 4px) */
+#app .dots { display: flex; gap: 6px; margin-top: 16px; }
+#app .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); cursor: none; transition: all .3s;
+}
+#app .dot.active { background: var(--accent2); width: 22px; border-radius: 4px; }
+
+/* ── Кнопка "Купить" (десктоп) ──
+   Эффект заливки: ::before выезжает слева при наведении */
+#app .buy-btn {
+  margin-top: 20px; padding: 14px 56px;
+  background: transparent; border: 1px solid var(--accent2); color: var(--accent);
+  font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 13px;
+  letter-spacing: .28em; text-transform: uppercase;
+  cursor: none; border-radius: 50px; position: relative; overflow: hidden; transition: all .3s;
+}
+/* Фиолетовый фон спрятан за левым краем кнопки */
+#app .buy-btn::before {
+  content: ''; position: absolute; inset: 0;
+  background: var(--accent2); transform: translateX(-100%);
+  transition: transform .3s cubic-bezier(.4,0,.2,1); z-index: 0;
+}
+#app .buy-btn:hover::before { transform: translateX(0); } /* выехать при наведении */
+#app .buy-btn:hover { color: var(--bg); }
+#app .buy-btn span { position: relative; z-index: 1; } /* текст поверх ::before */
+
+/* ── Toast-уведомление (десктоп) ──
+   Всплывает снизу справа. JS добавляет класс .show */
+#app .toast {
+  position: absolute; bottom: 36px; right: 36px;
+  background: var(--card-active); border: 1px solid var(--accent2); color: var(--accent);
+  padding: 16px 24px; border-radius: 10px; font-size: 12px; letter-spacing: .08em;
+  z-index: 200; transform: translateY(80px); opacity: 0;
+  transition: all .4s cubic-bezier(.4,0,.2,1); pointer-events: none;
+}
+#app .toast.show { transform: translateY(0); opacity: 1; }
+
+
+/* ════════════════════════════════
+   МОБИЛЬНАЯ ВЕРСИЯ (< 768px)
+   Обычный поток документа, без transform scale
+   ════════════════════════════════ */
+
+/* Мобильный контейнер — flex-колонка на всю высоту экрана.
+   overflow-x: hidden — блокирует горизонтальный скролл */
+#mobile { display: none; min-height: 100vh; flex-direction: column; overflow-x: hidden; }
+
+/* ── Шапка мобильная ──
+   position: sticky — прилипает к верху при прокрутке страницы */
+#mobile header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg); /* фон нужен чтобы шапка не просвечивала при прокрутке */
+}
+#mobile .logo {
+  font-family: 'Bebas Neue', sans-serif; font-size: 32px;
+  letter-spacing: .15em; color: var(--accent);
+  text-shadow: 0 0 20px var(--accent2);
+}
+#mobile .header-right { display: flex; align-items: center; gap: 10px; }
+#mobile .cart-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: 1px solid var(--border); color: var(--text);
+  padding: 8px 16px; border-radius: 50px;
+  font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: .1em;
+}
+#mobile .cart-icon { width: 18px; height: 14px; }
+#mobile .cart-icon svg { width: 100%; height: 100%; }
+#mobile .cart-count {
+  background: var(--accent2); color: var(--bg);
+  font-size: 9px; font-weight: 700;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .2s;
+}
+#mobile .auth-btns { display: flex; gap: 6px; }
+#mobile .auth-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 12px; border-radius: 4px;
+  font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: .06em;
+}
+#mobile .auth-btn.filled { background: var(--accent2); border-color: var(--accent2); color: var(--bg); }
+
+/* ── Подзаголовок (мобильный) ── */
+#mobile .hero-label { text-align: center; padding: 24px 20px 10px; }
+#mobile .hero-label h1 {
+  font-family: 'Unbounded', sans-serif; font-weight: 300; font-size: 9px;
+  letter-spacing: .35em; color: var(--muted); text-transform: uppercase;
+}
+
+/* ── Секция карусели (мобильная) ──
+   flex: 1 — растягивается, занимая оставшееся место на экране */
+#mobile .carousel-section {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding-bottom: 32px;
+}
+
+/* Внешний контейнер карусели:
+   overflow: hidden — обрезает карточки, выходящие за края экрана */
+#mobile .carousel-outer {
+  width: 100%; overflow: hidden; position: relative;
+}
+
+/* Горизонтальная лента карточек:
+   JS двигает её через transform: translateX() при свайпе */
+#mobile .carousel-strip {
+  display: flex; align-items: center;
+  transition: transform .4s cubic-bezier(.4,0,.2,1);
+  will-change: transform;
+  padding: 20px 0;
+}
+
+/* ── Карточка товара (мобильная) ──
+   flex-shrink: 0 — карточка не сжимается во flex-контейнере */
+#mobile .m-card {
+  flex-shrink: 0;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 20px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 24px 20px;
+  transition: transform .4s, opacity .4s, box-shadow .3s;
+  user-select: none;
+}
+/* Активная (центральная) карточка */
+#mobile .m-card.active {
+  background: var(--card-active); border-color: var(--accent2);
+  box-shadow: 0 0 40px rgba(167,139,250,.2), 0 12px 40px rgba(0,0,0,.5);
+}
+#mobile .m-card-name {
+  font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 11px;
+  letter-spacing: .2em; color: var(--accent); text-transform: uppercase; text-align: center;
+}
+/* Контейнер изображения — 95% ширины, квадратный */
+#mobile .tshirt-preview { width: 95%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+#mobile .tshirt-svg { width: 100%; height: 100%; }
+#mobile .m-card.active .tshirt-svg { filter: drop-shadow(0 0 10px var(--accent2)); }
+
+/* Кнопки размеров — крупнее чем на десктопе (36px vs 30px) для удобства касания */
+#mobile .size-picker { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+#mobile .size-btn {
+  width: 36px; height: 36px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: none; color: var(--muted);
+  font-family: 'Space Mono', monospace; font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+}
+#mobile .size-btn.active {
+  border-color: var(--accent2); color: var(--accent); background: var(--glow);
+}
+#mobile .m-card-price {
+  font-family: 'Bebas Neue', sans-serif; font-size: 32px;
+  letter-spacing: .05em; color: var(--price);
+}
+
+/* ── Навигация: стрелки ← → и точки между ними ── */
+#mobile .mob-nav { display: flex; align-items: center; gap: 20px; margin-top: 8px; }
+#mobile .mob-arrow {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; transition: all .2s;
+}
+#mobile .mob-arrow:active { border-color: var(--accent2); color: var(--accent2); }
+
+/* Точки-индикаторы (мобильные) */
+#mobile .dots { display: flex; gap: 6px; }
+#mobile .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); transition: all .3s;
+}
+#mobile .dot.active { background: var(--accent2); width: 20px; border-radius: 4px; }
+
+/* ── Информация об активном товаре (мобильная) ── */
+#mobile .product-info {
+  text-align: center; margin-top: 12px; padding: 0 24px;
+  opacity: 0; transform: translateY(8px); transition: all .35s;
+}
+#mobile .product-info.visible { opacity: 1; transform: translateY(0); }
+#mobile .product-info .pname {
+  font-family: 'Unbounded', sans-serif; font-weight: 300; font-size: 16px;
+  letter-spacing: .14em; color: var(--accent); margin-bottom: 4px;
+}
+#mobile .product-info .pdesc { font-size: 11px; color: var(--muted); }
+
+/* ── Кнопка "Купить" (мобильная) ──
+   :active — срабатывает при нажатии пальцем (нет hover на телефоне) */
+#mobile .buy-btn {
+  margin-top: 20px; padding: 16px 48px;
+  background: transparent; border: 1px solid var(--accent2); color: var(--accent);
+  font-family: 'Unbounded', sans-serif; font-weight: 400; font-size: 12px;
+  letter-spacing: .24em; text-transform: uppercase;
+  border-radius: 50px; position: relative; overflow: hidden; transition: all .3s;
+}
+#mobile .buy-btn:active { background: var(--accent2); color: var(--bg); }
+
+/* ── Toast-уведомление (мобильное) ──
+   position: fixed — не зависит от скролла.
+   Появляется снизу по центру экрана. */
+#mobile .toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--card-active); border: 1px solid var(--accent2); color: var(--accent);
+  padding: 12px 20px; border-radius: 8px; font-size: 11px; letter-spacing: .06em;
+  z-index: 200; opacity: 0; white-space: nowrap;
+  transition: all .4s cubic-bezier(.4,0,.2,1); pointer-events: none;
+}
+#mobile .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Кастомный курсор мыши (только десктоп) — точка и кольцо с инерцией -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- ═══ ДЕСКТОПНАЯ ВЕРСИЯ ═══ -->
+<div id="app">
+  <header>
+    <div class="logo">THREADS</div>
+    <div class="header-right">
+      <!-- Кнопка корзины: onclick вызывает addToCartD() -->
+      <button class="cart-btn" onclick="addToCartD()">
+        <div class="cart-icon">
+          <!-- SVG-иконка корзины -->
+          <svg viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1 1h3l2 10h12l2-8H6"/>
+            <circle cx="9" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/>
+          </svg>
+        </div>
+        <span>КОРЗИНА</span>
+        <!-- Счётчик товаров, обновляется JS -->
+        <div class="cart-count" id="d-cartCount">0</div>
+      </button>
+      <div class="auth-btns">
+        <button class="auth-btn">ВОЙТИ</button>
+        <button class="auth-btn filled">РЕГИСТРАЦИЯ</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="carousel-section">
+    <div class="hero-label"><h1>Коллекция / Весна 2025</h1></div>
+    <div class="carousel-wrapper">
+      <!-- Стрелка влево: dPrev() — предыдущий товар -->
+      <button class="arrow left" onclick="dPrev()">
+        <svg viewBox="0 0 36 36" fill="none">
+          <path d="M22 8L12 18L22 28" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <!-- Трек карусели — JS динамически создаёт карточки внутри -->
+      <div class="carousel-track" id="d-track"></div>
+      <!-- Стрелка вправо: dNext() — следующий товар -->
+      <button class="arrow right" onclick="dNext()">
+        <svg viewBox="0 0 36 36" fill="none">
+          <path d="M14 8L24 18L14 28" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <!-- Название и описание активного товара — обновляется JS -->
+    <div class="product-info" id="d-info">
+      <div class="pname" id="d-pname"></div>
+      <div class="pdesc" id="d-pdesc"></div>
+    </div>
+    <!-- Точки-индикаторы — JS создаёт динамически -->
+    <div class="dots" id="d-dots"></div>
+    <button class="buy-btn" onclick="addToCartD()"><span>Купить</span></button>
+  </section>
+  <!-- Всплывающее уведомление о добавлении в корзину -->
+  <div class="toast" id="d-toast"></div>
+</div>
+
+<!-- ═══ МОБИЛЬНАЯ ВЕРСИЯ ═══ -->
+<div id="mobile">
+  <header>
+    <div class="logo">THREADS</div>
+    <div class="header-right">
+      <button class="cart-btn" onclick="addToCartM()">
+        <div class="cart-icon">
+          <svg viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1 1h3l2 10h12l2-8H6"/>
+            <circle cx="9" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/>
+          </svg>
+        </div>
+        <span>КОРЗИНА</span>
+        <div class="cart-count" id="m-cartCount">0</div>
+      </button>
+      <div class="auth-btns">
+        <button class="auth-btn">ВОЙТИ</button>
+        <button class="auth-btn filled">ЗАРЕГ.</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="carousel-section">
+    <div class="hero-label"><h1>Коллекция / Весна 2025</h1></div>
+    <!-- Внешний контейнер: overflow:hidden скрывает карточки вне экрана -->
+    <div class="carousel-outer" id="m-outer">
+      <!-- Лента карточек — JS двигает через translateX -->
+      <div class="carousel-strip" id="m-strip"></div>
+    </div>
+    <!-- Навигация: стрелка ← | точки | стрелка → -->
+    <div class="mob-nav">
+      <button class="mob-arrow" onclick="mPrev()">&#8592;</button> <!-- ← -->
+      <div class="dots" id="m-dots"></div>
+      <button class="mob-arrow" onclick="mNext()">&#8594;</button> <!-- → -->
+    </div>
+    <!-- Информация об активном товаре -->
+    <div class="product-info" id="m-info">
+      <div class="pname" id="m-pname"></div>
+      <div class="pdesc" id="m-pdesc"></div>
+    </div>
+    <button class="buy-btn" onclick="addToCartM()">Купить</button>
+  </section>
+  <div class="toast" id="m-toast"></div>
+</div>
+
+<script>
+/* ════════════════════════════════════════
+   ДАННЫЕ ТОВАРОВ
+   Каждый объект — один товар в магазине:
+   name   — название
+   desc   — описание материала и кроя
+   price  — цена (строка с символом ₽)
+   color  — цвет SVG-футболки (не используется после перехода на img)
+   stroke — цвет обводки SVG (не используется после перехода на img)
+   sizes  — массив доступных размеров
+   img    — путь к файлу изображения (относительно index.html)
+   ════════════════════════════════════════ */
+const products = [
+  { name:"NOIR BASIC",  desc:"Хлопок 100%, оверсайз",      price:"₽ 1 200", color:"#1e1b2e", stroke:"#a78bfa", sizes:["XS","S","M","L"],    img:"noir-basic.png"  },
+  { name:"VOID TEE",    desc:"Плотный хлопок, regular fit", price:"₽ 1 500", color:"#16132a", stroke:"#7c6fa0", sizes:["S","M","L","XL"],    img:"void-tee.png"    },
+  { name:"HAZE DROP",   desc:"Трикотаж, свободный крой",    price:"₽ 1 800", color:"#2a2540", stroke:"#c4b5fd", sizes:["XS","S","M","L"],   img:"haze-drop.png"   },
+  { name:"PHANTOM",     desc:"Bamb-Cotton, slim fit",        price:"₽ 2 100", color:"#312d4d", stroke:"#e8e0ff", sizes:["S","M","L","XL"],   img:"phantom.png"     },
+  { name:"DRIFT CLUB",  desc:"Хлопок 80%, унисекс",         price:"₽ 990",   color:"#1a1728", stroke:"#6d5cae", sizes:["XS","S","M"],       img:"drift-club.png"  },
+  { name:"ULTRA SOFT",  desc:"Мягкий модал, relaxed",        price:"₽ 2 400", color:"#25204a", stroke:"#b39ddb", sizes:["S","M","L"],        img:"ultra-soft.png"  },
+  { name:"CARBON",      desc:"Heavy cotton, oversize",        price:"₽ 1 650", color:"#1c1930", stroke:"#9575cd", sizes:["M","L","XL","XXL"], img:"carbon.png"      },
+];
+
+/* Возвращает HTML тега <img> с изображением товара.
+   color и stroke — унаследованы от старой SVG-версии, сейчас не используются. */
+function tshirtSVG(color, stroke, img) {
+  return `<img src="${img}" style="width:100%;height:100%;object-fit:contain;" alt="футболка">`;
+}
+
+/* ════════════════════════════════════════
+   ОПРЕДЕЛЕНИЕ ТИПА УСТРОЙСТВА
+   Брейкпоинт 768px — граница мобильного/десктопа
+   ════════════════════════════════════════ */
+const MOBILE_BP = 768;
+let isMobile = window.innerWidth < MOBILE_BP; /* текущий режим устройства */
+
+/* Переключает видимость десктопного (#app) или мобильного (#mobile) layout-а.
+   Вызывается при загрузке страницы и при изменении размера окна. */
+function showLayout() {
+  isMobile = window.innerWidth < MOBILE_BP;
+  if (isMobile) {
+    document.getElementById('app').style.display    = 'none';  /* скрыть десктоп */
+    document.getElementById('mobile').style.display = 'flex';  /* показать мобильный */
+    document.getElementById('cursor').style.display      = 'none'; /* скрыть кастомный курсор */
+    document.getElementById('cursorRing').style.display  = 'none';
+    document.body.style.overflow = 'auto';   /* разрешить вертикальный скролл */
+    document.body.style.cursor   = 'auto';   /* обычный системный курсор */
+    mLayout();                               /* инициализировать мобильную карусель */
+  } else {
+    document.getElementById('app').style.display    = 'block'; /* показать десктоп */
+    document.getElementById('mobile').style.display = 'none';  /* скрыть мобильный */
+    document.getElementById('cursor').style.display      = 'block'; /* показать кастомный курсор */
+    document.getElementById('cursorRing').style.display  = 'block';
+    document.body.style.overflow = 'hidden'; /* скролл запрещён — всё вмещается в экран */
+    document.body.style.cursor   = 'none';   /* скрыть системный курсор */
+    dLayout();                               /* инициализировать десктопную карусель */
+  }
+}
+
+/* ════════════════════════════════════════
+   ДЕСКТОПНАЯ ЛОГИКА
+   ════════════════════════════════════════ */
+
+/* Эталонные размеры "холста" — всегда 1920×1080.
+   JS вычисляет коэффициент масштаба под реальный экран. */
+const BASE_W = 1920, BASE_H = 1080;
+
+/* Состояние десктопной карусели */
+let dCurrent  = 0;     /* индекс активного товара (0..6) */
+let dCart     = 0;     /* количество товаров в корзине */
+let dDragging = false; /* флаг: идёт ли перетаскивание мышью */
+let dStartX   = 0;     /* начальная X-координата drag */
+
+/* Масштабирует #app под текущий размер окна.
+   scale = min(ширина/1920, высота/1080) — вписать по наименьшей стороне.
+   tx, ty — отступы для центрирования в окне браузера. */
+function dApplyScale() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const scale = Math.min(vw / BASE_W, vh / BASE_H);
+  const tx = (vw - BASE_W * scale) / 2; /* горизонтальный отступ */
+  const ty = (vh - BASE_H * scale) / 2; /* вертикальный отступ */
+  const app = document.getElementById('app');
+  app.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+  app.style.transformOrigin = 'top left'; /* масштабировать от верхнего левого угла */
+}
+
+/* Возвращает геометрические параметры карусели.
+   Все размеры в пикселях в 1920-координатном пространстве.
+   actH  — высота активной карточки
+   sideH — высота боковых карточек
+   rX    — горизонтальный радиус дуги карусели
+   rZ    — глубина 3D-дуги (уход в перспективу) */
+function dDims() {
+  const wrap  = document.querySelector('#app .carousel-wrapper');
+  const wrapW = wrap.offsetWidth;
+  const cardW = 413;
+  const actH  = cardW * 1.5;              /* пропорция 1:1.6 */
+  const sideH = actH * 0.68;              /* боковые немного ниже */
+  const rX    = Math.min(wrapW * 0.36, cardW * 3.4); /* горизонтальный разброс */
+  const rZ    = cardW * 0.62;             /* глубина 3D */
+  return { actH, sideH, rX, rZ };
+}
+
+/* Создаёт DOM-элементы карточек и вставляет в трек карусели.
+   Очищает трек, затем для каждого товара создаёт карточку. */
+function dBuild() {
+  const track = document.getElementById('d-track');
+  track.innerHTML = ''; /* очистить предыдущие карточки */
+  products.forEach((p, i) => {
+    const card = document.createElement('div');
+    /* Активная карточка получает дополнительный класс 'active' */
+    card.className = 'card' + (i === dCurrent ? ' active' : '');
+    /* Кнопки размеров — первый размер активен по умолчанию */
+    const sizeBtns = p.sizes.map((s, si) =>
+      `<button class="size-btn ${si===0?'active':''}" onclick="dSelectSize(event,${i},${si})">${s}</button>`
+    ).join('');
+    card.innerHTML = `
+      <div class="card-name">${p.name}</div>
+      <div class="tshirt-preview">${tshirtSVG(p.color, p.stroke, p.img)}</div>
+      <div class="size-picker">${sizeBtns}</div>
+      <div class="card-price">${p.price}</div>`;
+    /* Клик по карточке переключает на неё (если не было drag) */
+    card.addEventListener('click', () => { if (!dDragging) dGoTo(i); });
+    track.appendChild(card);
+  });
+  dUpdatePos();   /* расставить карточки по 3D-позициям */
+  dUpdateInfo();  /* обновить блок с информацией */
+  dBuildDots();   /* создать точки-индикаторы */
+}
+
+/* Расставляет карточки по 3D-дуге карусели.
+   Для каждой карточки вычисляется:
+   norm   — смещение от активной (-3..+3 для 7 карточек)
+   angle  — угол на окружности
+   x, z   — позиция в 3D-пространстве
+   scale  — масштаб (дальние меньше — перспектива)
+   opacity — прозрачность (дальние прозрачнее)
+   h      — высота (активная полная, боковые меньше) */
+function dUpdatePos() {
+  const cards = [...document.querySelectorAll('#d-track .card')];
+  const total = cards.length;
+  const { actH, sideH, rX, rZ } = dDims();
+  cards.forEach((card, i) => {
+    const offset  = (i - dCurrent + total) % total;
+    const norm    = offset > total / 2 ? offset - total : offset; /* -3..+3 */
+    const angle   = (norm / total) * Math.PI * 2;    /* угол на окружности */
+    const x       = Math.sin(angle) * rX;             /* горизонтальное смещение */
+    const z       = Math.cos(angle) * rZ - rZ;        /* глубина (rZ вычитается — нулевая точка спереди) */
+    const scale   = 0.38 + 0.62 * ((z + rZ) / rZ);   /* 0.38 (сзади) до 1.0 (спереди) */
+    const opacity = norm === 0 ? 1 : Math.max(0.14, 0.64 - Math.abs(norm) * 0.14);
+    const h       = norm === 0 ? actH : Math.max(sideH * 0.65, sideH * (1 - Math.abs(norm) * 0.06));
+    card.style.transform = `translate(-50%,-50%) translateX(${x}px) translateZ(${z}px) scale(${scale})`;
+    card.style.opacity   = opacity;
+    card.style.zIndex    = Math.round(scale * 10); /* ближние карточки поверх дальних */
+    card.style.height    = h + 'px';
+    card.className       = 'card' + (norm === 0 ? ' active' : '');
+  });
+}
+
+/* Обновляет название и описание товара под каруселью с анимацией.
+   Сначала скрывает блок, через 50мс меняет текст и показывает — плавная замена. */
+function dUpdateInfo() {
+  const p = products[dCurrent];
+  const info = document.getElementById('d-info');
+  info.classList.remove('visible'); /* скрыть */
+  setTimeout(() => {
+    document.getElementById('d-pname').textContent = p.name;
+    document.getElementById('d-pdesc').textContent = p.desc + ' — ' + p.price;
+    info.classList.add('visible'); /* CSS transition плавно показывает */
+  }, 50);
+}
+
+/* Создаёт точки-индикаторы — по одной на каждый товар.
+   Клик по точке переключает карусель. */
+function dBuildDots() {
+  const dots = document.getElementById('d-dots');
+  dots.innerHTML = '';
+  products.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === dCurrent ? ' active' : '');
+    d.onclick = () => dGoTo(i);
+    dots.appendChild(d);
+  });
+}
+
+/* Переключает карусель на товар с индексом idx.
+   % products.length — зацикливание (после последнего — первый). */
+function dGoTo(idx) {
+  dCurrent = (idx + products.length) % products.length;
+  dUpdatePos(); dUpdateInfo();
+  document.querySelectorAll('#d-dots .dot').forEach((d, i) =>
+    d.className = 'dot' + (i === dCurrent ? ' active' : ''));
+}
+function dPrev() { dGoTo(dCurrent - 1); } /* предыдущий товар */
+function dNext() { dGoTo(dCurrent + 1); } /* следующий товар */
+
+/* Выбор размера в карточке.
+   e.stopPropagation() — чтобы клик не переключал карточку. */
+function dSelectSize(e, pi, si) {
+  e.stopPropagation();
+  document.querySelectorAll('#d-track .card')[pi]
+    .querySelectorAll('.size-btn')
+    .forEach((b, i) => b.className = 'size-btn' + (i === si ? ' active' : ''));
+}
+
+/* Добавить в корзину (десктоп):
+   увеличить счётчик, анимировать его, показать toast-уведомление. */
+function addToCartD() {
+  dCart++;
+  const cc = document.getElementById('d-cartCount');
+  cc.textContent = dCart;
+  cc.style.transform = 'scale(1.7)';                       /* кратковременное увеличение */
+  setTimeout(() => cc.style.transform = 'scale(1)', 250); /* вернуть нормальный размер */
+  dShowToast(products[dCurrent].name + ' добавлен в корзину');
+}
+
+/* Показывает toast на 2.5 секунды.
+   clearTimeout — если toast уже показан, сбрасывает таймер. */
+function dShowToast(msg) {
+  const t = document.getElementById('d-toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* Запускает масштабирование и строит карусель при инициализации десктопа */
+function dLayout() {
+  dApplyScale();
+  dBuild();
+}
+
+/* ── Перетаскивание мышью / тач на десктопе ──
+   dScaledX — переводит координату из пространства экрана в 1920-координаты
+   (делит на коэффициент масштаба, т.к. #app масштабирован через scale). */
+const dWr = document.querySelector('#app .carousel-wrapper');
+function dScaledX(cx) {
+  const scale = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
+  return cx / scale;
+}
+/* mousedown — запомнить начало, сбросить флаг drag */
+dWr.addEventListener('mousedown',  e => { dDragging = false; dStartX = dScaledX(e.clientX); });
+/* mousemove — если сдвинулись > 6px, это drag (не click) */
+dWr.addEventListener('mousemove',  e => { if (Math.abs(dScaledX(e.clientX) - dStartX) > 6) dDragging = true; });
+/* mouseup — если сдвиг > 55px, перелистнуть */
+dWr.addEventListener('mouseup',    e => { const d = dScaledX(e.clientX) - dStartX; if (Math.abs(d) > 55) d < 0 ? dNext() : dPrev(); });
+/* То же для touch (планшеты на десктопном layout-е) */
+dWr.addEventListener('touchstart', e => { dStartX = dScaledX(e.touches[0].clientX); dDragging = false; });
+dWr.addEventListener('touchmove',  e => { if (Math.abs(dScaledX(e.touches[0].clientX) - dStartX) > 6) dDragging = true; });
+dWr.addEventListener('touchend',   e => { const d = dScaledX(e.changedTouches[0].clientX) - dStartX; if (Math.abs(d) > 55) d < 0 ? dNext() : dPrev(); });
+
+/* ── Кастомный курсор (десктоп) ──
+   cursor — точка, двигается мгновенно за мышью.
+   ring — кольцо, следует с инерцией (плавное приближение на 12% каждый кадр).
+   requestAnimationFrame — повторяется ~60 раз в секунду. */
+const cursor = document.getElementById('cursor');
+const ring   = document.getElementById('cursorRing');
+let mx=0, my=0, rx=0, ry=0;
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cursor.style.left = mx - 6 + 'px'; /* -6 = половина размера точки (12px/2) */
+  cursor.style.top  = my - 6 + 'px';
+});
+(function loop() {
+  rx += (mx-rx)*.12; ry += (my-ry)*.12; /* инерционное приближение к курсору */
+  ring.style.left = rx - 18 + 'px';     /* -18 = половина кольца (36px/2) */
+  ring.style.top  = ry - 18 + 'px';
+  requestAnimationFrame(loop);           /* повторять каждый кадр */
+})();
+
+/* Управление с клавиатуры — стрелки ← → */
+document.addEventListener('keydown', e => {
+  if (!isMobile) { if (e.key==='ArrowLeft') dPrev(); if (e.key==='ArrowRight') dNext(); }
+  else           { if (e.key==='ArrowLeft') mPrev(); if (e.key==='ArrowRight') mNext(); }
+});
+
+/* ════════════════════════════════════════
+   МОБИЛЬНАЯ ЛОГИКА
+   ════════════════════════════════════════ */
+let mCurrent = 0; /* индекс активного товара */
+let mCart    = 0; /* количество товаров в корзине */
+
+/* Устаревшие переменные — оставлены, но не используются */
+const CARD_W_MOB = Math.min(window.innerWidth * 0.72, 280);
+const SIDE_PEEK  = 0.14;
+
+/* Константы размеров мобильной карточки:
+   M_CARD_RATIO = 0.90 — карточка = 90% ширины экрана
+   M_CARD_MAX   = 525  — но не больше 525px
+   M_GAP        = 16   — зазор между карточками */
+const M_CARD_RATIO = 0.90;
+const M_CARD_MAX   = 525;
+const M_GAP        = 16;
+
+/* Вычисляет ширину карточки под текущий экран */
+function mCardW() {
+  return Math.min(window.innerWidth * M_CARD_RATIO, M_CARD_MAX);
+}
+
+/* Строит мобильную карусель — создаёт карточки, задаёт размеры контейнера */
+function mBuild() {
+  const strip  = document.getElementById('m-strip');
+  const outer  = document.getElementById('m-outer');
+  strip.innerHTML = ''; /* очистить */
+
+  const vw    = window.innerWidth;
+  const cardW = mCardW();
+  const cardH = cardW * 1.6; /* пропорция 1:1.6 */
+
+  /* Центрирование — через translateX в mUpdateStrip, padding не нужен */
+  strip.style.paddingLeft  = '0px';
+  strip.style.paddingRight = '0px';
+  strip.style.gap          = M_GAP + 'px';
+  outer.style.height       = (cardH + 40) + 'px'; /* +40 = вертикальные отступы полосы */
+
+  products.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className     = 'm-card' + (i === mCurrent ? ' active' : '');
+    card.style.width   = cardW + 'px';
+    card.style.height  = cardH + 'px';
+    card.style.flexShrink = '0'; /* не сжиматься во flex-контейнере */
+
+    const sizeBtns = p.sizes.map((s, si) =>
+      `<button class="size-btn ${si===0?'active':''}" onclick="mSelectSize(event,${i},${si})">${s}</button>`
+    ).join('');
+    card.innerHTML = `
+      <div class="m-card-name">${p.name}</div>
+      <div class="tshirt-preview">${tshirtSVG(p.color, p.stroke, p.img)}</div>
+      <div class="size-picker">${sizeBtns}</div>
+      <div class="m-card-price">${p.price}</div>`;
+    /* Клик по боковой карточке — активировать её */
+    card.addEventListener('click', () => mGoTo(i));
+    strip.appendChild(card);
+  });
+
+  mUpdateStrip(); /* расставить карточки */
+  mUpdateInfo();  /* обновить информацию */
+  mBuildDots();   /* создать точки */
+}
+
+/* Сдвигает ленту карточек так, чтобы активная была по центру экрана.
+   Формула центрирования:
+   центр карточки i = i*(cardW+gap) + cardW/2
+   смещение ленты   = центр активной - половина экрана */
+function mUpdateStrip() {
+  const vw    = window.innerWidth;
+  const cardW = mCardW();
+  const strip = document.getElementById('m-strip');
+
+  const offset = mCurrent * (cardW + M_GAP) + cardW / 2 - vw / 2;
+  strip.style.transform = `translateX(${-offset}px)`;
+
+  /* Обновить внешний вид каждой карточки */
+  [...document.querySelectorAll('#m-strip .m-card')].forEach((card, i) => {
+    const dist = Math.abs(i - mCurrent);
+    card.style.opacity   = dist === 0 ? '1' : dist === 1 ? '0.45' : '0.2'; /* дальше — прозрачнее */
+    card.style.transform = dist === 0 ? 'scale(1)' : 'scale(0.88)';         /* боковые чуть меньше */
+    card.className       = 'm-card' + (i === mCurrent ? ' active' : '');
+  });
+}
+
+/* Обновляет название и описание активного товара с анимацией */
+function mUpdateInfo() {
+  const p = products[mCurrent];
+  const info = document.getElementById('m-info');
+  info.classList.remove('visible');
+  setTimeout(() => {
+    document.getElementById('m-pname').textContent = p.name;
+    document.getElementById('m-pdesc').textContent = p.desc + ' — ' + p.price;
+    info.classList.add('visible');
+  }, 50);
+}
+
+/* Создаёт точки-индикаторы для мобильной карусели */
+function mBuildDots() {
+  const dots = document.getElementById('m-dots');
+  dots.innerHTML = '';
+  products.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === mCurrent ? ' active' : '');
+    d.onclick = () => mGoTo(i);
+    dots.appendChild(d);
+  });
+}
+
+/* Переключает мобильную карусель на товар idx.
+   Math.max/min — ограничивает индекс (без зацикливания, в отличие от десктопа) */
+function mGoTo(idx) {
+  mCurrent = Math.max(0, Math.min(products.length - 1, idx));
+  mUpdateStrip(); mUpdateInfo();
+  document.querySelectorAll('#m-dots .dot').forEach((d, i) =>
+    d.className = 'dot' + (i === mCurrent ? ' active' : ''));
+}
+function mPrev() { mGoTo(mCurrent - 1); } /* предыдущий */
+function mNext() { mGoTo(mCurrent + 1); } /* следующий */
+
+/* Выбор размера на мобильной карточке */
+function mSelectSize(e, pi, si) {
+  e.stopPropagation(); /* не переключать карточку */
+  document.querySelectorAll('#m-strip .m-card')[pi]
+    .querySelectorAll('.size-btn')
+    .forEach((b, i) => b.className = 'size-btn' + (i === si ? ' active' : ''));
+}
+
+/* Добавить в корзину (мобильный) */
+function addToCartM() {
+  mCart++;
+  const cc = document.getElementById('m-cartCount');
+  cc.textContent = mCart;
+  cc.style.transform = 'scale(1.7)';
+  setTimeout(() => cc.style.transform = 'scale(1)', 250);
+  mShowToast(products[mCurrent].name + ' добавлен в корзину');
+}
+
+/* Toast-уведомление (мобильный) */
+function mShowToast(msg) {
+  const t = document.getElementById('m-toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ── Обработка свайпов на мобильном ──
+   Вешается ОДИН РАЗ при загрузке (не при каждом mBuild — иначе обработчики накапливаются).
+   touchstart — запомнить начальные координаты.
+   touchmove  — отметить что было движение.
+   touchend   — если горизонтальный сдвиг > 40px — перелистнуть на одну карточку.
+   Фильтр dy/dx — отсеивает вертикальный скролл страницы. */
+function mSetupSwipe() {
+  const outer = document.getElementById('m-outer');
+  let tx = 0, ty = 0, moved = false;
+
+  outer.addEventListener('touchstart', e => {
+    tx    = e.touches[0].clientX;  /* начальная X-координата касания */
+    ty    = e.touches[0].clientY;  /* начальная Y-координата касания */
+    moved = false;                  /* сбросить флаг движения */
+  }, { passive: true }); /* passive: true — не блокирует нативный скролл */
+
+  outer.addEventListener('touchmove', e => {
+    moved = true; /* зафиксировать что было движение пальца */
+  }, { passive: true });
+
+  outer.addEventListener('touchend', e => {
+    if (!moved) return; /* простое касание без движения — игнорировать */
+    const dx = e.changedTouches[0].clientX - tx; /* горизонтальный сдвиг */
+    const dy = e.changedTouches[0].clientY - ty; /* вертикальный сдвиг */
+    /* Если вертикаль преобладает — это скролл страницы, не свайп карусели */
+    if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    /* Порог 40px — ровно одна карточка за свайп */
+    if (dx < -40) mNext();      /* свайп влево — следующий товар */
+    else if (dx > 40) mPrev();  /* свайп вправо — предыдущий товар */
+  });
+}
+
+/* Строит мобильный layout */
+function mLayout() { mBuild(); }
+
+/* ════════════════════════════════════════
+   ИНИЦИАЛИЗАЦИЯ И ОБРАБОТКА RESIZE
+   ════════════════════════════════════════ */
+
+mSetupSwipe(); /* настроить свайп ОДИН РАЗ при загрузке страницы */
+showLayout();  /* показать нужный layout */
+
+/* При изменении размера окна (поворот телефона, изменение окна браузера):
+   debounce 80мс — функция вызывается через 80мс после последнего события resize,
+   что предотвращает лишние перерисовки при плавном ресайзе. */
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const wasMobile = isMobile;
+    isMobile = window.innerWidth < MOBILE_BP;
+    if (isMobile !== wasMobile) {
+      showLayout();              /* тип устройства изменился — полная перестройка */
+    } else if (!isMobile) {
+      dApplyScale(); dUpdatePos(); /* десктоп: пересчитать масштаб и позиции */
+    } else {
+      mBuild();                  /* мобильный: пересчитать размеры карточек */
+    }
+  }, 80);
+});
+</script>
+</body>
+</html>
